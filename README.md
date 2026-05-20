@@ -106,20 +106,17 @@ All downstream tools are prefixed with their server name and a double underscore
 The `mcp` subcommand lets you add, list, inspect, and remove downstream servers using the same syntax as `claude mcp add`.
 
 ```bash
-# Add a stdio server (matches Claude Code syntax exactly)
-multitool mcp add --transport stdio --env KEY=val myserver -- npx -y @modelcontextprotocol/server-github
+# Add a stdio server (auto-detected)
+multitool mcp add playwright npx @playwright/mcp@latest
 
-# Add an HTTP server
-multitool mcp add --transport http --header "Authorization: Bearer token" myserver https://api.example.com/mcp
+# Add a stdio server with env vars and command flags (use -- before the command if flags conflict)
+multitool mcp add -e KEY=val myserver -- npx -y @modelcontextprotocol/server-github
 
-# List configured servers
-multitool mcp list
+# Add an HTTP server (auto-detected)
+multitool mcp add myserver https://api.githubcopilot.com/mcp/
 
-# Show details for a specific server
-multitool mcp get myserver
-
-# Remove a server
-multitool mcp remove myserver
+# Add an HTTP server with custom headers
+multitool mcp add -H "Authorization: Bearer token" myserver https://api.example.com/mcp
 ```
 
 **Scopes**
@@ -151,7 +148,7 @@ You can also hand-edit the JSON config directly if you prefer.
 
 ## Future Enhancements
 
-- Env var expansion with `${VAR:-default}` fallback syntax.
+- env var expansion with `${VAR:-default}` fallback syntax.
 - Graceful reconnection when downstream servers crash.
 
 ## License

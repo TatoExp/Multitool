@@ -30,21 +30,26 @@ var mcpCmd = &cobra.Command{
 // ------------------------------------------------------------------
 
 var mcpAddCmd = &cobra.Command{
-	Use:   "add [flags] <name> [-- <command> [args...]] | add [flags] <name> <url>",
+	Use:   "add [flags] <name> <url> | add [flags] <name> [--] <command> [args...]",
 	Short: "Add a downstream MCP server",
-	Example: `  # Stdio server
-  multitool mcp add --transport stdio --env KEY=val myserver -- npx -y @modelcontextprotocol/server-github
+	Example: `  # Stdio server (auto-detected)
+  multitool mcp add playwright npx @playwright/mcp@latest
 
-  # HTTP server
-  multitool mcp add --transport http --header "Authorization: Bearer token" myserver https://api.example.com/mcp`,
+  # Stdio server with env vars and command flags
+  multitool mcp add -e KEY=val myserver -- npx -y @modelcontextprotocol/server-github
+
+  # HTTP server (auto-detected)
+  multitool mcp add myserver https://api.githubcopilot.com/mcp/
+
+  # HTTP server with headers
+  multitool mcp add -H "Authorization: Bearer token" myserver https://api.example.com/mcp`,
 	RunE: runMCPAdd,
 }
 
 func init() {
 	mcpCmd.AddCommand(mcpAddCmd, mcpAddJSONCmd, mcpListCmd, mcpGetCmd, mcpRemoveCmd)
 
-	mcpAddCmd.Flags().StringP("transport", "t", "", "Transport type: stdio, http, or streamable-http")
-	_ = mcpAddCmd.MarkFlagRequired("transport")
+	mcpAddCmd.Flags().StringP("transport", "t", "", "Transport type: stdio, http, or streamable-http (auto-detected if omitted)")
 	mcpAddCmd.Flags().StringArrayP("env", "e", nil, "Environment variable in KEY=value form (stdio only, repeatable)")
 	mcpAddCmd.Flags().StringArrayP("header", "H", nil, "HTTP header in 'Name: Value' form (http only, repeatable)")
 	addScopeFlag(mcpAddCmd)
@@ -61,13 +66,12 @@ func runMCPAdd(c *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Find the raw '--' separator in os.Args so we can distinguish server
-	// name from stdio command / args.
-	dashIdx := -1
-	for i := range os.Args {
-		if os.Args[i] == "--" {
-			dashIdx = i
-			break
+	// Determine transport type if not explicitly set.
+	if transportType == "" {
+		// HTTP URLs contain a scheme. Stdio commands don't.
+		transportType = detectTransport(args)
+		if transportType == "" {
+			return errors.New("could not auto-detect transport; please provide --transport with stdio, http, or streamable-http")
 		}
 	}
 
@@ -76,20 +80,34 @@ func runMCPAdd(c *cobra.Command, args []string) error {
 
 	switch transportType {
 	case "stdio":
-		if dashIdx < 0 {
-			return errors.New("stdio servers require '--' followed by <command> [args...]")
-		}
 		if len(args) == 0 {
 			return errors.New("server name is required")
 		}
 		name = args[0]
 
-		cmdStart := dashIdx + 1
-		if cmdStart >= len(os.Args) {
-			return errors.New("command is required after '--'")
+		// Find the command part. It starts after the first non-flag argument
+		// that is not the server name. We support both:
+		//   multitool mcp add x -- npx foo
+		//   multitool mcp add x npx foo
+		var commandParts []string
+		dashIdx := -1
+		for i := range os.Args {
+			if os.Args[i] == "--" {
+				dashIdx = i
+				break
+			}
 		}
-		command := os.Args[cmdStart]
-		commandArgs := os.Args[cmdStart+1:]
+		if dashIdx >= 0 {
+			// Everything after '--' is the command.
+			commandParts = os.Args[dashIdx+1:]
+		} else if len(args) > 1 {
+			// No '--'; treat remaining positional args as the command.
+			commandParts = args[1:]
+		}
+
+		if len(commandParts) == 0 {
+			return errors.New("command is required (provide after server name, optionally prefixed with --)")
+		}
 
 		envMap, err := parseEnvFlags(envFlags)
 		if err != nil {
@@ -98,8 +116,8 @@ func runMCPAdd(c *cobra.Command, args []string) error {
 
 		serverCfg = &config.ServerConfig{
 			Type:    "stdio",
-			Command: command,
-			Args:    commandArgs,
+			Command: commandParts[0],
+			Args:    commandParts[1:],
 			Env:     envMap,
 		}
 
@@ -122,7 +140,7 @@ func runMCPAdd(c *cobra.Command, args []string) error {
 		}
 
 	default:
-		return fmt.Errorf("unsupported transport %q", transportType)
+		return fmt.Errorf("unsupported transport %q; use stdio or http", transportType)
 	}
 
 	cfg, err := config.Load(cfgPath)
@@ -134,7 +152,7 @@ func runMCPAdd(c *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Added server %q (%s)\n", name, transportType)
+	fmt.Printf("Added server %q (%s)\n", name, serverCfg.Type)
 	return nil
 }
 
@@ -354,4 +372,23 @@ func parseHeaderFlags(flags []string) (map[string]string, error) {
 		m[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 	}
 	return m, nil
+}
+
+// detectTransport examines positional arguments to guess whether the user
+// wants a stdio or http server. It returns an empty string when uncertain.
+func detectTransport(args []string) string {
+	if len(args) < 2 {
+		return ""
+	}
+
+	// The last positional arg is either a URL or the start of the command.
+	last := args[len(args)-1]
+
+	// URL schemes contain "://"
+	if strings.Contains(last, "://") {
+		return "http"
+	}
+
+	// Everything else defaults to stdio.
+	return "stdio"
 }

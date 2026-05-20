@@ -343,7 +343,80 @@ func (m *Manager) toolsForServer(serverName string) []string {
 	return names
 }
 
-// expandEnv replaces $VAR and ${VAR} with their environment values.
+// expandEnv replaces $VAR, ${VAR}, and ${VAR:-default} with their
+// environment values. Unlike os.ExpandEnv, it supports the fallback
+// syntax ${VAR:-default}.
 func expandEnv(s string) string {
-	return os.ExpandEnv(s)
+	var result strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] != '$' {
+			result.WriteByte(s[i])
+			i++
+			continue
+		}
+
+		// Look ahead for ${...} or $IDENT
+		if i+1 >= len(s) {
+			result.WriteByte('$')
+			i++
+			continue
+		}
+
+		if s[i+1] == '{' {
+			// Find closing brace
+			end := strings.IndexByte(s[i+2:], '}')
+			if end == -1 {
+				// No closing brace — write $ and continue
+				result.WriteByte('$')
+				i++
+				continue
+			}
+			end += i + 2 // absolute index
+			inner := s[i+2 : end]
+			val := resolveEnvWithFallback(inner)
+			result.WriteString(val)
+			i = end + 1
+		} else {
+			// Simple $VAR — read identifier
+			start := i + 1
+			j := start
+			for j < len(s) && (isIdentChar(s[j])) {
+				j++
+			}
+			name := s[start:j]
+			if name == "" {
+				result.WriteByte('$')
+				i++
+				continue
+			}
+			if v, ok := os.LookupEnv(name); ok {
+				result.WriteString(v)
+			}
+			i = j
+		}
+	}
+	return result.String()
+}
+
+// resolveEnvWithFallback parses "VAR" or "VAR:-default" and returns
+// the environment value or the fallback.
+func resolveEnvWithFallback(spec string) string {
+	const fallbackSep = ":-"
+	if idx := strings.Index(spec, fallbackSep); idx != -1 {
+		name := spec[:idx]
+		fallback := spec[idx+len(fallbackSep):]
+		if v, ok := os.LookupEnv(name); ok && v != "" {
+			return v
+		}
+		return fallback
+	}
+	if v, ok := os.LookupEnv(spec); ok {
+		return v
+	}
+	return ""
+}
+
+func isIdentChar(c byte) bool {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }
