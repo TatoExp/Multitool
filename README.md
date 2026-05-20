@@ -2,6 +2,22 @@
 
 An MCP server shim that pre-loads downstream MCP servers and proxies their tools, exposing only two fixed tools (`get_schema`, `call_tool`) to save context space.
 
+## Install
+
+### With `go install`
+
+```bash
+go install github.com/TatoExp/multitool@latest
+```
+
+### With Claude Code
+
+```bash
+claude mcp add --transport stdio multitool -- go run github.com/TatoExp/multitool@latest --stdio
+```
+
+Then create your downstream server config at `~/.config/multitool/config.json` and Claude Code will load it automatically.
+
 ## How It Works
 
 Instead of loading all tool schemas into the AI context (which can consume thousands of tokens), the shim exposes only two fixed tools:
