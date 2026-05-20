@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "multitool": {
+      "type": "local",
+      "command": [
+        "go",
+        "run",
+        "./cmd/multitool",
+        "--stdio"
+      ]
+    },
+    "github": {
+      "enabled": false
+    }
+  }
+}
