@@ -86,26 +86,58 @@ func Load(path string) (*Config, error) {
 		cfg.MCPServers = make(map[string]*ServerConfig)
 	}
 
-	// Validate configs.
-	for name, server := range cfg.MCPServers {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+// Validate checks every server configuration for required fields and
+// supported types. It returns an error describing the first problem found.
+func (c *Config) Validate() error {
+	for name, server := range c.MCPServers {
 		if server.Type == "" {
-			return nil, fmt.Errorf("server %q: missing type", name)
+			return fmt.Errorf("server %q: missing type", name)
 		}
 		switch server.Type {
 		case "stdio":
 			if server.Command == "" {
-				return nil, fmt.Errorf("server %q: missing command for stdio type", name)
+				return fmt.Errorf("server %q: missing command for stdio type", name)
 			}
 		case "http", "streamable-http":
 			if server.URL == "" {
-				return nil, fmt.Errorf("server %q: missing url for %s type", name, server.Type)
+				return fmt.Errorf("server %q: missing url for %s type", name, server.Type)
 			}
 		default:
-			return nil, fmt.Errorf("server %q: unsupported type %q (supported: stdio, http, streamable-http)", name, server.Type)
+			return fmt.Errorf("server %q: unsupported type %q (supported: stdio, http, streamable-http)", name, server.Type)
 		}
 	}
+	return nil
+}
 
-	return &cfg, nil
+// Save writes the configuration to the given path, creating parent
+// directories if necessary. The output is pretty-printed JSON.
+func (c *Config) Save(path string) error {
+	if err := c.Validate(); err != nil {
+		return fmt.Errorf("validating config: %w", err)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+	return nil
 }
 
 // EnsureDir creates the configuration directory if it doesn't exist.

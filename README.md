@@ -81,14 +81,6 @@ When Claude Code initializes, the shim exposes only `get_schema` and `call_tool`
 
 | Tool | Description |
 |------|-------------|
-| `list_available_tools` | Returns all available tool names and descriptions. Call this first to see what tools exist. |
-| `get_schema` | Returns the JSON input schema for a specific tool. Call this before `call_tool` to learn what arguments are required. |
-| `call_tool` | Invokes the actual downstream tool with arguments. |
-
-## Available Tools from the Shim
-
-| Tool | Description |
-|------|-------------|
 | `get_schema` | Returns the JSON input schema for a specific tool. Its description contains the full list of available tools so the AI knows what to ask for. |
 | `call_tool` | Invokes the actual downstream tool with arguments. Its description also contains the full list of available tools. |
 
@@ -102,21 +94,49 @@ All downstream tools are prefixed with their server name and a double underscore
 
 ## CLI Commands
 
-```bash
-# Run as stdio MCP server (required for Claude Code)
-./multitool --stdio
+### Run the MCP Server
 
-# Print usage information
-./multitool
+```bash
+# Required for Claude Code / OpenCode
+./multitool --stdio
 ```
+
+### Manage Downstream Servers
+
+The `mcp` subcommand lets you add, list, inspect, and remove downstream servers using the same syntax as `claude mcp add`.
+
+```bash
+# Add a stdio server (matches Claude Code syntax exactly)
+multitool mcp add --transport stdio --env KEY=val myserver -- npx -y @modelcontextprotocol/server-github
+
+# Add an HTTP server
+multitool mcp add --transport http --header "Authorization: Bearer token" myserver https://api.example.com/mcp
+
+# List configured servers
+multitool mcp list
+
+# Show details for a specific server
+multitool mcp get myserver
+
+# Remove a server
+multitool mcp remove myserver
+```
+
+**Scopes**
+- `--scope local` (default): stores in `~/.config/multitool/config.json`
+- `--scope project`: stores in `./multitool.json` in the current directory
+
+You can also hand-edit the JSON config directly if you prefer.
 
 ## Project Structure
 
 ```
 .
 ├── cmd/
-│   └── multitool/
-│       └── main.go          # CLI entry point
+├── main.go                  # Entry point
+├── cmd/
+│   ├── root.go              # Root command + --stdio flag
+│   └── mcp.go               # mcp add/list/get/remove
 ├── internal/
 │   ├── config/
 │   │   ├── config.go        # Config loading (Claude Code schema)
@@ -132,7 +152,6 @@ All downstream tools are prefixed with their server name and a double underscore
 ## Future Enhancements
 
 - Env var expansion with `${VAR:-default}` fallback syntax.
-- Support for adding servers via CLI commands (e.g. `./multitool add`).
 - Graceful reconnection when downstream servers crash.
 
 ## License

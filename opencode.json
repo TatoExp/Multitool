@@ -6,7 +6,7 @@
       "command": [
         "go",
         "run",
-        "./cmd/multitool",
+        ".",
         "--stdio"
       ]
     },
